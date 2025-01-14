@@ -1,5 +1,7 @@
 Instructions
+
 Manuever to RECEIPTPROCESSOR directory
+
 go run .
 
 
