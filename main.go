@@ -2,15 +2,17 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
-	"log"
 	"math"
 	"net/http"
 	"regexp"
 	sl "slices"
 	"strconv"
 	str "strings"
+
+	"github.com/google/uuid"
 )
+
+var receipts map[uuid.UUID]int
 
 type Item struct {
 	ShortDescription string
@@ -23,6 +25,14 @@ type Receipt struct {
 	PurchaseTime string
 	Items        []Item `json:"items"`
 	Total        string
+}
+
+type PointsResponse struct {
+	Points int `json:"points"`
+}
+
+type ProcessResponse struct {
+	ID uuid.UUID `json:"id"`
 }
 
 func processRetailer(r string, p *int) {
@@ -70,7 +80,6 @@ func processPurchaseDate(d string, p *int) {
 }
 
 func processPurchaseTime(t string, p *int) {
-	log.Println(strconv.ParseFloat(t[:2], 32))
 	hour, _ := strconv.ParseFloat(t[:2], 32)
 	minute, _ := strconv.ParseFloat(t[3:], 32)
 	time := hour + (minute / 100.00)
@@ -80,21 +89,30 @@ func processPurchaseTime(t string, p *int) {
 	}
 }
 
-func process(r Receipt) {
+func process(r Receipt) int {
 	p := 0
 	processRetailer(r.Retailer, &p)
 	processTotal(r.Total, &p)
 	processItems(r.Items, &p)
 	processPurchaseDate(r.PurchaseDate, &p)
 	processPurchaseTime(r.PurchaseTime, &p)
-	log.Println(r, p)
+	return p
 }
 
 func main() {
+
+	receipts = make(map[uuid.UUID]int)
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /receipts/{id}/points/", func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
-		fmt.Fprint(w, id)
+
+		uuid, err := uuid.Parse(id)
+		if err != nil {
+			panic(err)
+		}
+		res := PointsResponse{Points: receipts[uuid]}
+		json.NewEncoder(w).Encode(res)
 	})
 
 	mux.HandleFunc("POST /receipts/process/", func(w http.ResponseWriter, r *http.Request) {
@@ -105,7 +123,12 @@ func main() {
 		if err != nil {
 			panic(err)
 		}
-		process(rec)
+
+		var id = uuid.New()
+		receipts[id] = process(rec)
+
+		res := ProcessResponse{ID: id}
+		json.NewEncoder(w).Encode(res)
 	})
 
 	http.ListenAndServe("localhost:8090", mux)
